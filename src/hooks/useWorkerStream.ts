@@ -26,16 +26,16 @@ export interface WorkerStreamState {
 // ─── Hook ─────────────────────────────────────────────────────────────────────
 
 /**
- * Connects to the `priceWorker` SharedWorker and exposes a live tick map,
+ * Connects to the `priceWorker` Web Worker and exposes a live tick map,
  * connection status, and error state.
  *
- * The SharedWorker batches messages every 16 ms so this hook updates the
- * React state at most once per animation frame, keeping the UI at 60 fps.
+ * The Worker batches messages every 16 ms so this hook updates React state
+ * at most once per animation frame, keeping the UI at 60 fps.
  *
  * @param pairs - Normalized pairs to subscribe to, e.g. ["BTC/USDT", "ETH/USDT"]
  */
 export function useWorkerStream(pairs: string[]): WorkerStreamState {
-  const workerRef = useRef<SharedWorker | null>(null)
+  const workerRef = useRef<Worker | null>(null)
   const pairsRef  = useRef(pairs)
 
   const [ticks,          setTicks]          = useState<TickMap>({})
@@ -72,31 +72,22 @@ export function useWorkerStream(pairs: string[]): WorkerStreamState {
   }, [])
 
   useEffect(() => {
-    // SharedWorker is not available in SSR
+    // Worker is not available in SSR
     if (typeof window === 'undefined') return
 
-    const worker = new SharedWorker(
+    const worker = new Worker(
       new URL('../lib/worker/priceWorker.ts', import.meta.url),
-      { type: 'module', name: 'crypto-price-worker' },
     )
 
     workerRef.current = worker
-    worker.port.addEventListener('message', handleMessage)
-    worker.port.start()
+    worker.addEventListener('message', handleMessage)
 
-    const subscribeMsg: WorkerIncomingMessage = {
-      type: 'SUBSCRIBE',
-      pairs: pairsRef.current,
-    }
-    worker.port.postMessage(subscribeMsg)
+    worker.postMessage({ type: 'SUBSCRIBE', pairs: pairsRef.current } satisfies WorkerIncomingMessage)
 
     return () => {
-      const unsubMsg: WorkerIncomingMessage = {
-        type: 'UNSUBSCRIBE',
-        pairs: pairsRef.current,
-      }
-      worker.port.postMessage(unsubMsg)
-      worker.port.removeEventListener('message', handleMessage)
+      worker.postMessage({ type: 'UNSUBSCRIBE', pairs: pairsRef.current } satisfies WorkerIncomingMessage)
+      worker.removeEventListener('message', handleMessage)
+      worker.terminate()
     }
   }, [handleMessage])
 

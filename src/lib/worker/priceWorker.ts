@@ -1,15 +1,16 @@
 /**
- * priceWorker.ts — SharedWorker
+ * priceWorker.ts — Web Worker (bundled by Next.js webpack via new Worker(new URL(...)))
  *
  * Responsibilities:
- *  1. Open one WebSocket connection per exchange (shared across all browser tabs).
- *  2. Normalize incoming raw messages using exchange adapters.
- *  3. Batch-flush accumulated PriceTick updates to all connected ports every 16ms
- *     (matching a 60 Hz frame), keeping the UI thread free.
- *  4. Broadcast CONNECTION_STATUS and ERROR events to all ports.
+ *  1. Open one WebSocket connection per exchange off the main thread.
+ *  2. Normalize raw exchange messages using the exchange adapters.
+ *  3. Batch-flush accumulated PriceTick updates every 16 ms (60 fps boundary)
+ *     so the main UI thread is never blocked by high-frequency tick storms.
+ *  4. Post CONNECTION_STATUS and ERROR events back to the main thread.
  *
- * This file must be placed in /public or referenced via next/dist bundler
- * since SharedWorker scripts must be served as static assets.
+ * Architecture note: This is a dedicated Web Worker (not SharedWorker).
+ * SharedWorker support in Next.js requires a custom webpack plugin; a dedicated
+ * Worker is bundled automatically and is the correct starting point.
  */
 
 import { normalizeBinanceTick } from '@/lib/adapters/binance'
@@ -23,21 +24,16 @@ import type {
   Exchange,
 } from '@/types/market'
 
-// ─── Port registry ────────────────────────────────────────────────────────────
-const ports = new Set<MessagePort>()
-
-// ─── Tick batch buffer (flushed every 16 ms) ──────────────────────────────────
+// ─── Tick batch buffer (flushed every 16 ms) ─────────────────────────────────
 let tickBuffer: PriceTick[] = []
 
-function broadcast(msg: WorkerOutgoingMessage): void {
-  for (const port of ports) {
-    port.postMessage(msg)
-  }
+function post(msg: WorkerOutgoingMessage): void {
+  self.postMessage(msg)
 }
 
 function flushBatch(): void {
   if (tickBuffer.length === 0) return
-  broadcast({ type: 'PRICE_BATCH', updates: tickBuffer })
+  post({ type: 'PRICE_BATCH', updates: tickBuffer })
   tickBuffer = []
 }
 
@@ -48,7 +44,6 @@ const sockets = new Map<Exchange, WebSocket>()
 const RECONNECT_DELAY_MS = 3_000
 
 function connectBinance(pairs: string[]): void {
-  // bookTicker stream for each pair, e.g. btcusdt@bookTicker
   const streams = pairs
     .map((p) => p.replace('/', '').toLowerCase() + '@bookTicker')
     .join('/')
@@ -57,25 +52,24 @@ function connectBinance(pairs: string[]): void {
   const ws  = new WebSocket(url)
 
   ws.onopen = () => {
-    broadcast({ type: 'CONNECTION_STATUS', exchange: 'binance', status: 'connected' })
+    post({ type: 'CONNECTION_STATUS', exchange: 'binance', status: 'connected' })
   }
 
   ws.onmessage = (evt) => {
     try {
-      const envelope = JSON.parse(evt.data) as { data: BinanceBookTicker }
+      const envelope = JSON.parse(evt.data as string) as { data: BinanceBookTicker }
       tickBuffer.push(normalizeBinanceTick(envelope.data))
-    } catch {
-      // Malformed frame — silently skip
-    }
+    } catch { /* malformed frame — skip */ }
   }
 
   ws.onclose = () => {
-    broadcast({ type: 'CONNECTION_STATUS', exchange: 'binance', status: 'reconnecting' })
+    post({ type: 'CONNECTION_STATUS', exchange: 'binance', status: 'reconnecting' })
+    sockets.delete('binance')
     setTimeout(() => connectBinance(pairs), RECONNECT_DELAY_MS)
   }
 
-  ws.onerror = (evt) => {
-    broadcast({ type: 'ERROR', exchange: 'binance', message: (evt as ErrorEvent).message ?? 'Unknown error' })
+  ws.onerror = () => {
+    post({ type: 'ERROR', exchange: 'binance', message: 'WebSocket error' })
   }
 
   sockets.set('binance', ws)
@@ -85,64 +79,46 @@ function connectKraken(pairs: string[]): void {
   const ws = new WebSocket('wss://ws.kraken.com/v2')
 
   ws.onopen = () => {
-    // Subscribe to ticker channel for each pair
-    ws.send(
-      JSON.stringify({
-        method: 'subscribe',
-        params: { channel: 'ticker', symbol: pairs },
-      }),
-    )
-    broadcast({ type: 'CONNECTION_STATUS', exchange: 'kraken', status: 'connected' })
+    ws.send(JSON.stringify({
+      method: 'subscribe',
+      params: { channel: 'ticker', symbol: pairs },
+    }))
+    post({ type: 'CONNECTION_STATUS', exchange: 'kraken', status: 'connected' })
   }
 
   ws.onmessage = (evt) => {
     try {
-      const msg = JSON.parse(evt.data) as KrakenTickerMessage
+      const msg = JSON.parse(evt.data as string) as KrakenTickerMessage
       if (msg.channel === 'ticker' && msg.type === 'update') {
         tickBuffer.push(normalizeKrakenTick(msg))
       }
-    } catch {
-      // Malformed frame — silently skip
-    }
+    } catch { /* malformed frame — skip */ }
   }
 
   ws.onclose = () => {
-    broadcast({ type: 'CONNECTION_STATUS', exchange: 'kraken', status: 'reconnecting' })
+    post({ type: 'CONNECTION_STATUS', exchange: 'kraken', status: 'reconnecting' })
+    sockets.delete('kraken')
     setTimeout(() => connectKraken(pairs), RECONNECT_DELAY_MS)
   }
 
-  ws.onerror = (evt) => {
-    broadcast({ type: 'ERROR', exchange: 'kraken', message: (evt as ErrorEvent).message ?? 'Unknown error' })
+  ws.onerror = () => {
+    post({ type: 'ERROR', exchange: 'kraken', message: 'WebSocket error' })
   }
 
   sockets.set('kraken', ws)
 }
 
-// ─── SharedWorker entry point ─────────────────────────────────────────────────
-// @ts-expect-error — SharedWorkerGlobalScope is not in the default TS lib
-self.onconnect = (connectEvent: MessageEvent) => {
-  const port = connectEvent.ports[0]
-  ports.add(port)
+// ─── Worker message handler ───────────────────────────────────────────────────
+self.addEventListener('message', (evt: MessageEvent<WorkerIncomingMessage>) => {
+  const msg = evt.data
 
-  port.onmessage = (evt: MessageEvent<WorkerIncomingMessage>) => {
-    const msg = evt.data
-
-    if (msg.type === 'SUBSCRIBE') {
-      const pairs = msg.pairs
-
-      if (!sockets.has('binance')) connectBinance(pairs)
-      if (!sockets.has('kraken'))  connectKraken(pairs)
-    }
-
-    if (msg.type === 'UNSUBSCRIBE') {
-      // Future: close sockets if no ports remain subscribed
-    }
+  if (msg.type === 'SUBSCRIBE') {
+    if (!sockets.has('binance')) connectBinance(msg.pairs)
+    if (!sockets.has('kraken'))  connectKraken(msg.pairs)
   }
 
-  // Clean up when the tab closes
-  port.addEventListener('close', () => {
-    ports.delete(port)
-  })
-
-  port.start()
-}
+  if (msg.type === 'UNSUBSCRIBE') {
+    for (const ws of sockets.values()) ws.close()
+    sockets.clear()
+  }
+})

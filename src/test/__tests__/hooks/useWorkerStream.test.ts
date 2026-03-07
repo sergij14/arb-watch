@@ -1,26 +1,28 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
 import { useWorkerStream } from '@/hooks/useWorkerStream'
 import type { PriceTick, WorkerOutgoingMessage } from '@/types/market'
 
-// ─── Mock SharedWorker ────────────────────────────────────────────────────────
-class MockMessagePort extends EventTarget {
+// ─── Mock Worker ──────────────────────────────────────────────────────────────
+// The hook uses `new Worker(new URL(...))` — we stub the global constructor.
+// Our mock extends EventTarget so addEventListener/dispatchEvent work natively.
+
+class MockWorker extends EventTarget {
   postMessage = vi.fn()
-  start = vi.fn()
+  terminate   = vi.fn()
 }
 
-class MockSharedWorker {
-  port = new MockMessagePort()
-}
+let mockWorkerInstance: MockWorker
 
-const mockWorkerInstance = new MockSharedWorker()
+vi.stubGlobal('Worker', vi.fn(function () {
+  mockWorkerInstance = new MockWorker()
+  return mockWorkerInstance
+}))
 
-vi.stubGlobal('SharedWorker', vi.fn(function () { return mockWorkerInstance }))
-
-// ─── Helper to fire a message from the worker ─────────────────────────────────
+// ─── Helper to fire a message from the worker to the hook ────────────────────
 function fireWorkerMessage(data: WorkerOutgoingMessage) {
   const event = new MessageEvent('message', { data })
-  mockWorkerInstance.port.dispatchEvent(event)
+  mockWorkerInstance.dispatchEvent(event)
 }
 
 const PAIRS = ['BTC/USDT']
@@ -38,23 +40,14 @@ describe('useWorkerStream', () => {
     vi.clearAllMocks()
   })
 
-  afterEach(() => {
-    vi.restoreAllMocks()
+  it('creates a Worker on mount', () => {
+    renderHook(() => useWorkerStream(PAIRS))
+    expect(Worker).toHaveBeenCalledTimes(1)
   })
 
-  it('creates a SharedWorker on mount', () => {
+  it('sends a SUBSCRIBE message with the provided pairs on mount', () => {
     renderHook(() => useWorkerStream(PAIRS))
-    expect(SharedWorker).toHaveBeenCalledTimes(1)
-  })
-
-  it('calls port.start() to open the MessageChannel', () => {
-    renderHook(() => useWorkerStream(PAIRS))
-    expect(mockWorkerInstance.port.start).toHaveBeenCalledTimes(1)
-  })
-
-  it('sends a SUBSCRIBE message with the provided pairs', () => {
-    renderHook(() => useWorkerStream(PAIRS))
-    expect(mockWorkerInstance.port.postMessage).toHaveBeenCalledWith({
+    expect(mockWorkerInstance.postMessage).toHaveBeenCalledWith({
       type: 'SUBSCRIBE',
       pairs: PAIRS,
     })
@@ -108,5 +101,15 @@ describe('useWorkerStream', () => {
     })
 
     expect(result.current.error).toBe('WebSocket closed')
+  })
+
+  it('sends UNSUBSCRIBE and terminates the worker on unmount', () => {
+    const { unmount } = renderHook(() => useWorkerStream(PAIRS))
+    unmount()
+    expect(mockWorkerInstance.postMessage).toHaveBeenCalledWith({
+      type: 'UNSUBSCRIBE',
+      pairs: PAIRS,
+    })
+    expect(mockWorkerInstance.terminate).toHaveBeenCalledTimes(1)
   })
 })
