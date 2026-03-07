@@ -8,7 +8,7 @@ import DashboardSkeleton from './loading'
  * The <Suspense> boundary wraps the real-time client component — Next.js
  * streams the static parts instantly while the dynamic chunk loads.
  */
-export const experimental_ppr = true
+export const experimental_cacheComponents = true
 
 export const metadata = {
   title: 'Crypto Arbitrage Dashboard',
