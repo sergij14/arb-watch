@@ -39,7 +39,7 @@ export interface ArbitrageOpportunity {
   timestamp: number
 }
 
-// ─── SharedWorker message contracts ──────────────────────────────────────────
+// ─── Worker message contracts ───────────────────────────────────────────────
 export type WorkerIncomingMessage =
   | { type: 'SUBSCRIBE';   pairs: string[] }
   | { type: 'UNSUBSCRIBE'; pairs: string[] }

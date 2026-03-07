@@ -8,9 +8,8 @@
  *     so the main UI thread is never blocked by high-frequency tick storms.
  *  4. Post CONNECTION_STATUS and ERROR events back to the main thread.
  *
- * Architecture note: This is a dedicated Web Worker (not SharedWorker).
- * SharedWorker support in Next.js requires a custom webpack plugin; a dedicated
- * Worker is bundled automatically and is the correct starting point.
+ * Architecture note: This is a dedicated Web Worker bundled automatically by
+ * Next.js via `new Worker(new URL(...))`.
  */
 
 import { normalizeBinanceTick } from '@/lib/adapters/binance'

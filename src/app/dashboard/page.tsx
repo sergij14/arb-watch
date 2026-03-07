@@ -12,7 +12,7 @@ export const experimental_cacheComponents = true
 
 export const metadata = {
   title: 'Crypto Arbitrage Dashboard',
-  description: 'Real-time cross-exchange arbitrage monitor powered by SharedWorker',
+  description: 'Real-time cross-exchange arbitrage monitor powered by a Web Worker price stream',
 }
 
 export default function DashboardPage() {
@@ -27,7 +27,7 @@ export default function DashboardPage() {
           </span>
         </div>
         <p className="mt-0.5 text-xs text-muted-foreground">
-          Fee-aware cross-exchange spread monitor · SharedWorker 60 fps
+          Fee-aware cross-exchange spread monitor · Web Worker · 60 fps
         </p>
       </header>
 
