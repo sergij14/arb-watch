@@ -17,6 +17,7 @@ const OPPORTUNITY: ArbitrageOpportunity = {
 
 const PROFITABLE_OPP: ArbitrageOpportunity = {
   ...OPPORTUNITY,
+  pair: 'ETH/USDT',
   grossSpreadPct: 0.9,
   netSpreadPct: 0.54,
   netProfitUsd: 5.4,
