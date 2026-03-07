@@ -1,25 +1,35 @@
 import type { KrakenTickerMessage, PriceTick } from '@/types/market'
 
 /**
- * Normalizes a Kraken WebSocket v2 ticker message into a {@link PriceTick}.
+ * Normalizes a Kraken WebSocket v2 ticker message into an array of
+ * {@link PriceTick}s — one per entry in `data`.
  *
- * @throws {Error} if the message is not a ticker update or contains no data.
+ * Handles both `snapshot` (initial batch) and `update` message types.
+ *
+ * @throws {Error} if the message is not a ticker channel or contains no data.
  */
-export function normalizeKrakenTick(raw: KrakenTickerMessage): PriceTick {
+export function normalizeKrakenTicks(raw: KrakenTickerMessage): PriceTick[] {
   if (raw.channel !== 'ticker') {
-    throw new Error(`normalizeKrakenTick: expected channel "ticker", got "${raw.channel}"`)
+    throw new Error(`normalizeKrakenTicks: expected channel "ticker", got "${raw.channel}"`)
   }
   if (!raw.data || raw.data.length === 0) {
-    throw new Error('normalizeKrakenTick: data array is empty')
+    throw new Error('normalizeKrakenTicks: data array is empty')
   }
 
-  const entry = raw.data[0]
-
-  return {
+  const now = Date.now()
+  return raw.data.map((entry) => ({
     exchange: 'kraken',
-    pair: entry.symbol,   // Kraken already uses "BTC/USD" format
+    pair: entry.symbol,
     bid: entry.bid,
     ask: entry.ask,
-    timestamp: Date.now(),
-  }
+    timestamp: now,
+  }))
+}
+
+/**
+ * Convenience wrapper returning only the first tick.
+ * Used by legacy callers and unit tests.
+ */
+export function normalizeKrakenTick(raw: KrakenTickerMessage): PriceTick {
+  return normalizeKrakenTicks(raw)[0]
 }

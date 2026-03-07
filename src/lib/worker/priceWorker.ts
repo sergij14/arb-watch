@@ -14,7 +14,7 @@
  */
 
 import { normalizeBinanceTick } from '@/lib/adapters/binance'
-import { normalizeKrakenTick }  from '@/lib/adapters/kraken'
+import { normalizeKrakenTicks } from '@/lib/adapters/kraken'
 import type {
   PriceTick,
   WorkerIncomingMessage,
@@ -89,8 +89,11 @@ function connectKraken(pairs: string[]): void {
   ws.onmessage = (evt) => {
     try {
       const msg = JSON.parse(evt.data as string) as KrakenTickerMessage
-      if (msg.channel === 'ticker' && msg.type === 'update') {
-        tickBuffer.push(normalizeKrakenTick(msg))
+      // Handle both 'snapshot' (initial batch for all subscribed pairs)
+      // and 'update' (subsequent per-pair ticks).
+      if (msg.channel === 'ticker' && (msg.type === 'update' || msg.type === 'snapshot')) {
+        const ticks = normalizeKrakenTicks(msg)
+        for (const tick of ticks) tickBuffer.push(tick)
       }
     } catch { /* malformed frame — skip */ }
   }
