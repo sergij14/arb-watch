@@ -5,9 +5,10 @@ import { PriceTile }      from '@/components/dashboard/PriceTile'
 import { ArbitrageTable } from '@/components/dashboard/ArbitrageTable'
 import { useWorkerStream } from '@/hooks/useWorkerStream'
 import { calculateArbitrage } from '@/lib/arbitrage/calculator'
-import type { ArbitrageOpportunity } from '@/types/market'
+import type { ArbitrageOpportunity, Exchange } from '@/types/market'
 
 const PAIRS = ['BTC/USDT', 'ETH/USDT', 'SOL/USDT']
+const ALL_EXCHANGES: Exchange[] = ['binance', 'kraken', 'okx', 'coinbase']
 
 export default function DashboardClient() {
   const { ticks, connected, error } = useWorkerStream(PAIRS)
@@ -16,10 +17,23 @@ export default function DashboardClient() {
     return PAIRS.flatMap((pair) => {
       const pairTicks = ticks[pair]
       if (!pairTicks) return []
-      const binanceTick = pairTicks.binance
-      const krakenTick  = pairTicks.kraken
-      if (!binanceTick || !krakenTick) return []
-      return [calculateArbitrage(pair, binanceTick, krakenTick)]
+
+      // Collect ticks from all connected exchanges for this pair
+      const exchangeTicks = ALL_EXCHANGES
+        .map((ex) => pairTicks[ex])
+        .filter((t): t is NonNullable<typeof t> => !!t)
+
+      if (exchangeTicks.length < 2) return []
+
+      // Find the best arbitrage across all C(n,2) exchange pairs
+      let best: ArbitrageOpportunity | null = null
+      for (let i = 0; i < exchangeTicks.length; i++) {
+        for (let j = i + 1; j < exchangeTicks.length; j++) {
+          const opp = calculateArbitrage(pair, exchangeTicks[i], exchangeTicks[j])
+          if (!best || opp.netSpreadPct > best.netSpreadPct) best = opp
+        }
+      }
+      return best ? [best] : []
     })
   }, [ticks])
 
@@ -38,29 +52,29 @@ export default function DashboardClient() {
 
       {/* Per-pair price tiles grid */}
       {PAIRS.map((pair) => {
-        const pairTicks    = ticks[pair]
-        const binanceTick  = pairTicks?.binance ?? null
-        const krakenTick   = pairTicks?.kraken  ?? null
+        const pairTicks = ticks[pair]
 
-        const binanceHigher =
-          !!binanceTick && !!krakenTick && binanceTick.bid > krakenTick.bid
+        // Find the exchange with the highest bid for highlighting
+        const highestBidExchange = ALL_EXCHANGES.reduce<Exchange | null>((best, ex) => {
+          const tick = pairTicks?.[ex]
+          if (!tick) return best
+          const bestTick = best ? pairTicks?.[best] : null
+          return !bestTick || tick.bid > bestTick.bid ? ex : best
+        }, null)
 
         return (
           <section key={pair}>
             <h2 className="mb-2 text-sm font-semibold text-muted-foreground">{pair}</h2>
-            <div className="grid grid-cols-2 gap-4 md:grid-cols-2">
-              <PriceTile
-                tick={binanceTick}
-                exchange="binance"
-                pair={pair}
-                isHigher={binanceHigher}
-              />
-              <PriceTile
-                tick={krakenTick}
-                exchange="kraken"
-                pair={pair}
-                isHigher={!binanceHigher && !!krakenTick}
-              />
+            <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+              {ALL_EXCHANGES.map((exchange) => (
+                <PriceTile
+                  key={exchange}
+                  tick={pairTicks?.[exchange] ?? null}
+                  exchange={exchange}
+                  pair={pair}
+                  isHigher={highestBidExchange === exchange}
+                />
+              ))}
             </div>
           </section>
         )
@@ -71,3 +85,4 @@ export default function DashboardClient() {
     </div>
   )
 }
+

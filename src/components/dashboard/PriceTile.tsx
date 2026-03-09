@@ -12,8 +12,10 @@ interface PriceTileProps {
 }
 
 const EXCHANGE_LABELS: Record<Exchange, string> = {
-  binance: 'Binance',
-  kraken:  'Kraken',
+  binance:  'Binance',
+  kraken:   'Kraken',
+  okx:      'OKX',
+  coinbase: 'Coinbase',
 }
 
 /**

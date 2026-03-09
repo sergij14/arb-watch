@@ -1,5 +1,5 @@
 // ─── Supported exchanges ────────────────────────────────────────────────────
-export type Exchange = 'binance' | 'kraken'
+export type Exchange = 'binance' | 'kraken' | 'okx' | 'coinbase'
 
 // ─── Normalized price tick (single source of truth for all adapters) ─────────
 export interface PriceTick {
@@ -19,8 +19,10 @@ export interface ExchangeFees {
 }
 
 export const EXCHANGE_FEES: Record<Exchange, ExchangeFees> = {
-  binance: { maker: 0.001, taker: 0.001 },
-  kraken:  { maker: 0.0016, taker: 0.0026 },
+  binance:  { maker: 0.001,  taker: 0.001  },
+  kraken:   { maker: 0.0016, taker: 0.0026 },
+  okx:      { maker: 0.0008, taker: 0.001  },
+  coinbase: { maker: 0.0006, taker: 0.0008 },
 }
 
 // ─── Arbitrage opportunity ────────────────────────────────────────────────────
@@ -83,4 +85,28 @@ export interface KrakenTickerMessage {
   channel: string
   type: string
   data: KrakenTickerData[]
+}
+
+/** OKX WebSocket v5 tickers channel payload */
+export interface OkxTickerData {
+  instId: string   // e.g. "BTC-USDT"
+  bidPx:  string
+  bidSz:  string
+  askPx:  string
+  askSz:  string
+  ts:     string   // Unix ms as string
+}
+
+export interface OkxTickerMessage {
+  arg:  { channel: string; instId: string }
+  data: OkxTickerData[]
+}
+
+/** Coinbase Exchange (formerly Pro) WebSocket ticker message */
+export interface CoinbaseTickerMessage {
+  type:       'ticker'
+  product_id: string   // e.g. "BTC-USD"
+  best_bid:   string
+  best_ask:   string
+  time:       string   // ISO-8601
 }

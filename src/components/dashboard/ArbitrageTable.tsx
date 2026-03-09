@@ -13,9 +13,11 @@ interface ArbitrageTableProps {
   opportunities: ArbitrageOpportunity[]
 }
 
-const EXCHANGE_LABELS = {
-  binance: 'Binance',
-  kraken:  'Kraken',
+const EXCHANGE_LABELS: Record<string, string> = {
+  binance:  'Binance',
+  kraken:   'Kraken',
+  okx:      'OKX',
+  coinbase: 'Coinbase',
 }
 
 /**

@@ -14,12 +14,16 @@
 
 import { normalizeBinanceTick } from '@/lib/adapters/binance'
 import { normalizeKrakenTicks } from '@/lib/adapters/kraken'
+import { normalizeOkxTick } from '@/lib/adapters/okx'
+import { normalizeCoinbaseTick } from '@/lib/adapters/coinbase'
 import type {
   PriceTick,
   WorkerIncomingMessage,
   WorkerOutgoingMessage,
   BinanceBookTicker,
   KrakenTickerMessage,
+  OkxTickerMessage,
+  CoinbaseTickerMessage,
   Exchange,
 } from '@/types/market'
 
@@ -110,13 +114,93 @@ function connectKraken(pairs: string[]): void {
   sockets.set('kraken', ws)
 }
 
+function connectOkx(pairs: string[]): void {
+  // OKX uses dash-separated instIds: "BTC/USDT" → "BTC-USDT"
+  const args = pairs.map((p) => ({ channel: 'tickers', instId: p.replace('/', '-') }))
+  const ws = new WebSocket('wss://ws.okx.com:8443/ws/v5/public')
+
+  // OKX requires a pong response to its server-sent ping to keep the connection alive
+  let heartbeatTimer: ReturnType<typeof setInterval> | null = null
+
+  ws.onopen = () => {
+    ws.send(JSON.stringify({ op: 'subscribe', args }))
+    post({ type: 'CONNECTION_STATUS', exchange: 'okx', status: 'connected' })
+    // Send a ping every 25 s to satisfy OKX's 30 s keepalive window
+    heartbeatTimer = setInterval(() => {
+      if (ws.readyState === WebSocket.OPEN) ws.send('ping')
+    }, 25_000)
+  }
+
+  ws.onmessage = (evt) => {
+    if (evt.data === 'pong') return // heartbeat reply — ignore
+    try {
+      const msg = JSON.parse(evt.data as string) as OkxTickerMessage
+      if (msg.arg?.channel === 'tickers' && msg.data?.length) {
+        const tick = normalizeOkxTick(msg)
+        if (tick) tickBuffer.push(tick)
+      }
+    } catch { /* malformed frame — skip */ }
+  }
+
+  ws.onclose = () => {
+    if (heartbeatTimer) clearInterval(heartbeatTimer)
+    post({ type: 'CONNECTION_STATUS', exchange: 'okx', status: 'reconnecting' })
+    sockets.delete('okx')
+    setTimeout(() => connectOkx(pairs), RECONNECT_DELAY_MS)
+  }
+
+  ws.onerror = () => {
+    post({ type: 'ERROR', exchange: 'okx', message: 'WebSocket error' })
+  }
+
+  sockets.set('okx', ws)
+}
+
+function connectCoinbase(pairs: string[]): void {
+  // Coinbase Exchange uses USD not USDT: "BTC/USDT" → "BTC-USD"
+  const productIds = pairs.map((p) => p.replace('/USDT', '-USD').replace('/', '-'))
+  const ws = new WebSocket('wss://ws-feed.exchange.coinbase.com')
+
+  ws.onopen = () => {
+    ws.send(JSON.stringify({
+      type: 'subscribe',
+      product_ids: productIds,
+      channels: ['ticker'],
+    }))
+    post({ type: 'CONNECTION_STATUS', exchange: 'coinbase', status: 'connected' })
+  }
+
+  ws.onmessage = (evt) => {
+    try {
+      const msg = JSON.parse(evt.data as string) as CoinbaseTickerMessage
+      if (msg.type === 'ticker' && msg.best_bid && msg.best_ask) {
+        tickBuffer.push(normalizeCoinbaseTick(msg))
+      }
+    } catch { /* malformed frame — skip */ }
+  }
+
+  ws.onclose = () => {
+    post({ type: 'CONNECTION_STATUS', exchange: 'coinbase', status: 'reconnecting' })
+    sockets.delete('coinbase')
+    setTimeout(() => connectCoinbase(pairs), RECONNECT_DELAY_MS)
+  }
+
+  ws.onerror = () => {
+    post({ type: 'ERROR', exchange: 'coinbase', message: 'WebSocket error' })
+  }
+
+  sockets.set('coinbase', ws)
+}
+
 // ─── Worker message handler ───────────────────────────────────────────────────
 self.addEventListener('message', (evt: MessageEvent<WorkerIncomingMessage>) => {
   const msg = evt.data
 
   if (msg.type === 'SUBSCRIBE') {
-    if (!sockets.has('binance')) connectBinance(msg.pairs)
-    if (!sockets.has('kraken'))  connectKraken(msg.pairs)
+    if (!sockets.has('binance'))  connectBinance(msg.pairs)
+    if (!sockets.has('kraken'))   connectKraken(msg.pairs)
+    if (!sockets.has('okx'))      connectOkx(msg.pairs)
+    if (!sockets.has('coinbase')) connectCoinbase(msg.pairs)
   }
 
   if (msg.type === 'UNSUBSCRIBE') {
