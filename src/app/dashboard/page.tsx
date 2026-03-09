@@ -2,41 +2,56 @@ import { Suspense } from 'react'
 import DashboardClient from './DashboardClient'
 import DashboardSkeleton from './loading'
 
-/**
- * Partial Prerendering (PPR):
- * The static shell (header, sidebar) is prerendered to HTML at build time.
- * The <Suspense> boundary wraps the real-time client component — Next.js
- * streams the static parts instantly while the dynamic chunk loads.
- */
 export const experimental_cacheComponents = true
 
 export const metadata = {
-  title: 'Crypto Arbitrage Dashboard',
+  title: 'Arb Watch — Crypto Arbitrage Dashboard',
   description: 'Real-time cross-exchange arbitrage monitor powered by a Web Worker price stream',
 }
 
+const EXCHANGES = ['Binance', 'Kraken', 'OKX', 'Coinbase'] as const
+
 export default function DashboardPage() {
   return (
-    <main className="min-h-screen bg-background text-foreground">
-      {/* ── Static shell (prerendered) ─────────────────────────────── */}
-      <header className="border-b border-border px-6 py-4">
-        <div className="flex items-center gap-3">
-          <span className="text-lg font-bold tracking-tight">⚡ Arb Watch</span>
-          <span className="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">
-            Binance · Kraken
-          </span>
+    <div className="min-h-screen bg-background text-foreground">
+
+      {/* ── Sticky header ─────────────────────────────────────────── */}
+      <header className="sticky top-0 z-20 border-b border-border bg-background/80 backdrop-blur-md">
+        <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-3">
+
+          {/* Branding */}
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="text-base font-bold tracking-tight">⚡ Arb Watch</span>
+            </div>
+            <p className="text-[11px] leading-tight text-muted-foreground">
+              Fee-aware spread monitor · Web Worker · 60 fps
+            </p>
+          </div>
+
+          {/* Exchange chips */}
+          <div className="flex items-center gap-1.5">
+            {EXCHANGES.map((ex) => (
+              <span
+                key={ex}
+                className="rounded-full border border-border bg-muted/40 px-2.5 py-0.5 text-[11px] font-medium text-muted-foreground"
+              >
+                {ex}
+              </span>
+            ))}
+          </div>
+
         </div>
-        <p className="mt-0.5 text-xs text-muted-foreground">
-          Fee-aware cross-exchange spread monitor · Web Worker · 60 fps
-        </p>
       </header>
 
-      <div className="mx-auto max-w-5xl px-6 py-8">
-        {/* ── Dynamic price stream (streamed via Suspense) ────────── */}
+      {/* ── Main content ──────────────────────────────────────────── */}
+      <main className="mx-auto max-w-6xl px-6 py-8">
         <Suspense fallback={<DashboardSkeleton />}>
           <DashboardClient />
         </Suspense>
-      </div>
-    </main>
+      </main>
+
+    </div>
   )
 }
+
