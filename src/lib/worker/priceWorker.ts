@@ -84,7 +84,10 @@ function connectKraken(pairs: string[]): void {
   ws.onopen = () => {
     ws.send(JSON.stringify({
       method: 'subscribe',
-      params: { channel: 'ticker', symbol: pairs },
+      // By default Kraken only pushes a ticker on a trade, which on USDT pairs can
+      // be 20+ s apart while the book moves underneath. 'bbo' pushes on every
+      // best bid/offer change instead.
+      params: { channel: 'ticker', symbol: pairs, event_trigger: 'bbo' },
     }))
     post({ type: 'CONNECTION_STATUS', exchange: 'kraken', status: 'connected' })
   }
