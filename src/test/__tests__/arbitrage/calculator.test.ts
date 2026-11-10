@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { calculateArbitrage, findBestOpportunity } from '@/lib/arbitrage/calculator'
+import { calculateArbitrage, findBestForPair, findBestOpportunity } from '@/lib/arbitrage/calculator'
 import type { PriceTick } from '@/types/market'
 
 const binanceTick: PriceTick = {
@@ -91,5 +91,39 @@ describe('findBestOpportunity', () => {
     const result = findBestOpportunity([binanceTick, krakenTick, ethBinance, ethKraken])
     // ETH has a ~1.1% gross spread vs BTC's ~0.047%, ETH should win
     expect(result?.pair).toBe('ETH/USDT')
+  })
+
+  it('compares every exchange for a pair, not just the first two', () => {
+    // Binance and Kraken are close; the real spread is Binance → OKX (the third exchange).
+    const okxTick: PriceTick = { exchange: 'okx', pair: 'BTC/USDT', bid: 29700, ask: 29701, timestamp: 1002 }
+    const result = findBestOpportunity([binanceTick, krakenTick, okxTick])
+    expect(result?.buyExchange).toBe('binance')
+    expect(result?.sellExchange).toBe('okx')
+  })
+})
+
+describe('findBestForPair', () => {
+  const okxTick: PriceTick      = { exchange: 'okx',      pair: 'BTC/USDT', bid: 29700, ask: 29701, timestamp: 1002 }
+  const coinbaseTick: PriceTick = { exchange: 'coinbase', pair: 'BTC/USDT', bid: 29400, ask: 29401, timestamp: 1003 }
+
+  it('returns null with fewer than two exchanges', () => {
+    expect(findBestForPair('BTC/USDT', [])).toBeNull()
+    expect(findBestForPair('BTC/USDT', [binanceTick])).toBeNull()
+  })
+
+  it('finds the best net spread across all C(n,2) exchange combinations', () => {
+    // Cheapest ask is Coinbase (29401), highest bid is OKX (29700).
+    const result = findBestForPair('BTC/USDT', [binanceTick, krakenTick, okxTick, coinbaseTick])
+    expect(result?.buyExchange).toBe('coinbase')
+    expect(result?.sellExchange).toBe('okx')
+  })
+
+  it('accounts for fees when choosing between combinations', () => {
+    // Same prices on Binance and Kraken as sell venues: Binance wins on its lower taker fee.
+    const cheap: PriceTick      = { exchange: 'coinbase', pair: 'BTC/USDT', bid: 99, ask: 100, timestamp: 1 }
+    const viaBinance: PriceTick = { exchange: 'binance',  pair: 'BTC/USDT', bid: 102, ask: 103, timestamp: 1 }
+    const viaKraken: PriceTick  = { exchange: 'kraken',   pair: 'BTC/USDT', bid: 102, ask: 103, timestamp: 1 }
+    const result = findBestForPair('BTC/USDT', [cheap, viaKraken, viaBinance])
+    expect(result?.sellExchange).toBe('binance')
   })
 })

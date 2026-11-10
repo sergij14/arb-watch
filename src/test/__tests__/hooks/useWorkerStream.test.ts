@@ -93,6 +93,32 @@ describe('useWorkerStream', () => {
     expect(result.current.connected).toBe(false)
   })
 
+  it('stays connected while another exchange is still connected', () => {
+    const { result } = renderHook(() => useWorkerStream(PAIRS))
+
+    act(() => {
+      fireWorkerMessage({ type: 'CONNECTION_STATUS', exchange: 'binance', status: 'connected' })
+      fireWorkerMessage({ type: 'CONNECTION_STATUS', exchange: 'kraken',  status: 'connected' })
+    })
+    act(() => {
+      fireWorkerMessage({ type: 'CONNECTION_STATUS', exchange: 'kraken', status: 'reconnecting' })
+    })
+
+    expect(result.current.connected).toBe(true)
+    expect(result.current.exchangeStatus).toEqual({ binance: 'connected', kraken: 'reconnecting' })
+  })
+
+  it('becomes connected when a later exchange connects after an earlier one dropped', () => {
+    const { result } = renderHook(() => useWorkerStream(PAIRS))
+
+    act(() => {
+      fireWorkerMessage({ type: 'CONNECTION_STATUS', exchange: 'okx',     status: 'connected' })
+      fireWorkerMessage({ type: 'CONNECTION_STATUS', exchange: 'binance', status: 'reconnecting' })
+    })
+
+    expect(result.current.connected).toBe(true)
+  })
+
   it('exposes the latest error when an ERROR message arrives', () => {
     const { result } = renderHook(() => useWorkerStream(PAIRS))
 

@@ -49,4 +49,20 @@ describe('PriceTile', () => {
     const { container } = render(<PriceTile tick={KRAKEN_TICK} isHigher />)
     expect(container.firstChild).toHaveClass('border-green-500')
   })
+
+  it('marks a stale quote and dims it', () => {
+    const { container } = render(<PriceTile tick={KRAKEN_TICK} stale />)
+    expect(screen.getByText(/stale/i)).toBeInTheDocument()
+    expect(container.firstChild).toHaveClass('opacity-50')
+  })
+
+  it('still shows the last known prices of a stale quote', () => {
+    render(<PriceTile tick={KRAKEN_TICK} stale />)
+    expect(screen.getByText(/29[,.]?510/)).toBeInTheDocument()
+  })
+
+  it('does not mark a fresh quote as stale', () => {
+    render(<PriceTile tick={KRAKEN_TICK} />)
+    expect(screen.queryByText(/stale/i)).not.toBeInTheDocument()
+  })
 })
