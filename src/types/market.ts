@@ -8,7 +8,11 @@ export interface PriceTick {
   pair: string
   bid: number
   ask: number
-  /** Unix milliseconds */
+  /**
+   * When this quote was received, in Unix ms on the local clock. Exchange-reported
+   * times are skewed by each exchange's clock and by network latency, so they
+   * can't be compared across exchanges to tell how old a quote is.
+   */
   timestamp: number
 }
 

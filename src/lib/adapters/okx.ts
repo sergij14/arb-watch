@@ -24,6 +24,8 @@ export function normalizeOkxTick(raw: OkxTickerMessage): PriceTick | null {
     pair:      normalizeOkxPair(d.instId),
     bid,
     ask,
-    timestamp: parseInt(d.ts, 10) || Date.now(),
+    // Local receive time, like every adapter: quote ages are compared across
+    // exchanges, so they must all be measured on the same clock.
+    timestamp: Date.now(),
   }
 }

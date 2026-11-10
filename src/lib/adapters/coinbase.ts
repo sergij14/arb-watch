@@ -20,6 +20,8 @@ export function normalizeCoinbaseTick(raw: CoinbaseTickerMessage): PriceTick {
     pair:      normalizeCoinbasePair(raw.product_id),
     bid:       parseFloat(raw.best_bid),
     ask:       parseFloat(raw.best_ask),
-    timestamp: raw.time ? new Date(raw.time).getTime() : Date.now(),
+    // Local receive time, not `raw.time` (the last trade's time on Coinbase's
+    // clock): quote ages are compared across exchanges on one clock.
+    timestamp: Date.now(),
   }
 }
