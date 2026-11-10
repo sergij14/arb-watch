@@ -12,7 +12,7 @@ export default function DashboardSkeleton() {
       {[0, 1, 2].map((i) => (
         <section key={i}>
           <div className="mb-2 h-4 w-20 rounded bg-muted" />
-          <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+          <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
             {[0, 1, 2, 3].map((j) => (
               <div key={j} className="h-24 rounded-xl border border-border bg-muted" />
             ))}

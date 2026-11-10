@@ -32,7 +32,7 @@ export function PriceTile({ tick, exchange, pair, isHigher = false, stale = fals
   return (
     <div
       className={cn(
-        'rounded-xl border bg-card p-4 shadow-sm transition-[border-color,opacity] duration-300',
+        'rounded-xl border bg-card p-3 shadow-sm transition-[border-color,opacity] duration-300 sm:p-4',
         isHigher ? 'border-green-500' : 'border-border',
         stale && 'opacity-50',
       )}
@@ -49,7 +49,9 @@ export function PriceTile({ tick, exchange, pair, isHigher = false, stale = fals
             </span>
           )}
         </span>
-        <span className="text-xs font-medium text-foreground/60">{resolvedPair}</span>
+        {/* Hidden on phones: the section heading already names the pair, and the
+            two-column tiles are too narrow for exchange, Stale badge and pair. */}
+        <span className="hidden text-xs font-medium text-foreground/60 sm:inline">{resolvedPair}</span>
       </div>
 
       {tick ? (

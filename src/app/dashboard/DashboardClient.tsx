@@ -90,7 +90,7 @@ export default function DashboardClient() {
         return (
           <section key={pair}>
             <h2 className="mb-2 text-sm font-semibold text-muted-foreground">{pair}</h2>
-            <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+            <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
               {ALL_EXCHANGES.map((exchange) => {
                 const tick = pairTicks?.[exchange] ?? null
                 return (

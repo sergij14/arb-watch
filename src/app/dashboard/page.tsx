@@ -17,7 +17,7 @@ export default function DashboardPage() {
 
       {/* ── Sticky header ─────────────────────────────────────────── */}
       <header className="sticky top-0 z-20 border-b border-border bg-background/80 backdrop-blur-md">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-3">
+        <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3 sm:px-6">
 
           {/* Branding */}
           <div>
@@ -30,7 +30,7 @@ export default function DashboardPage() {
           </div>
 
           {/* Exchange chips */}
-          <div className="flex items-center gap-1.5">
+          <div className="hidden items-center gap-1.5 sm:flex">
             {EXCHANGES.map((ex) => (
               <span
                 key={ex}
@@ -45,7 +45,7 @@ export default function DashboardPage() {
       </header>
 
       {/* ── Main content ──────────────────────────────────────────── */}
-      <main className="mx-auto max-w-6xl px-6 py-8">
+      <main className="mx-auto max-w-6xl px-4 py-6 sm:px-6 sm:py-8">
         <Suspense fallback={<DashboardSkeleton />}>
           <DashboardClient />
         </Suspense>
