@@ -39,9 +39,13 @@ export function useWorkerStream(pairs: string[]): WorkerStreamState {
   const pairsRef  = useRef(pairs)
 
   const [ticks,          setTicks]          = useState<TickMap>({})
-  const [connected,      setConnected]      = useState(false)
   const [error,          setError]          = useState<string | null>(null)
   const [exchangeStatus, setExchangeStatus] = useState<Partial<Record<Exchange, ConnectionStatus>>>({})
+
+  // Derived, not stored: the feed is live while any exchange is connected. A
+  // single flag set by whichever status message came last would report the whole
+  // feed down when one of four sockets drops.
+  const connected = Object.values(exchangeStatus).some((status) => status === 'connected')
 
   const handleMessage = useCallback((evt: MessageEvent<WorkerOutgoingMessage>) => {
     const msg = evt.data
@@ -60,7 +64,6 @@ export function useWorkerStream(pairs: string[]): WorkerStreamState {
 
       case 'CONNECTION_STATUS': {
         setExchangeStatus((prev) => ({ ...prev, [msg.exchange]: msg.status }))
-        setConnected(msg.status === 'connected')
         break
       }
 

@@ -9,6 +9,8 @@ interface PriceTileProps {
   pair?: string
   /** Highlights the tile with a green border (this exchange has the highest bid). */
   isHigher?: boolean
+  /** The quote is too old, or its exchange is disconnected, so it's not traded on. */
+  stale?: boolean
 }
 
 const EXCHANGE_LABELS: Record<Exchange, string> = {
@@ -22,7 +24,7 @@ const EXCHANGE_LABELS: Record<Exchange, string> = {
  * Displays the current bid/ask for a single exchange.
  * Renders a skeleton loader when `tick` is null or undefined.
  */
-export function PriceTile({ tick, exchange, pair, isHigher = false }: PriceTileProps) {
+export function PriceTile({ tick, exchange, pair, isHigher = false, stale = false }: PriceTileProps) {
   const resolvedExchange = tick?.exchange ?? exchange
   const resolvedPair     = tick?.pair     ?? pair ?? '—'
   const label            = resolvedExchange ? EXCHANGE_LABELS[resolvedExchange] : '—'
@@ -30,13 +32,22 @@ export function PriceTile({ tick, exchange, pair, isHigher = false }: PriceTileP
   return (
     <div
       className={cn(
-        'rounded-xl border bg-card p-4 shadow-sm transition-colors duration-300',
+        'rounded-xl border bg-card p-4 shadow-sm transition-[border-color,opacity] duration-300',
         isHigher ? 'border-green-500' : 'border-border',
+        stale && 'opacity-50',
       )}
     >
       <div className="mb-2 flex items-center justify-between">
-        <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+        <span className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
           {label}
+          {stale && (
+            <span
+              className="rounded border border-amber-500/50 px-1 text-[10px] tracking-normal text-amber-500"
+              title="No fresh quote: excluded from arbitrage"
+            >
+              Stale
+            </span>
+          )}
         </span>
         <span className="text-xs font-medium text-foreground/60">{resolvedPair}</span>
       </div>

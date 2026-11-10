@@ -3,78 +3,107 @@
 import { useMemo } from 'react'
 import { PriceTile }      from '@/components/dashboard/PriceTile'
 import { ArbitrageTable } from '@/components/dashboard/ArbitrageTable'
+import { useNow }          from '@/hooks/useNow'
 import { useWorkerStream } from '@/hooks/useWorkerStream'
-import { calculateArbitrage } from '@/lib/arbitrage/calculator'
-import type { ArbitrageOpportunity, Exchange } from '@/types/market'
+import { findBestForPair } from '@/lib/arbitrage/calculator'
+import { freshTicks }      from '@/lib/arbitrage/freshness'
+import { cn } from '@/lib/utils'
+import type { ArbitrageOpportunity, ConnectionStatus, Exchange, PriceTick } from '@/types/market'
 
 const PAIRS = ['BTC/USDT', 'ETH/USDT', 'SOL/USDT']
 const ALL_EXCHANGES: Exchange[] = ['binance', 'kraken', 'okx', 'coinbase']
 
+const EXCHANGE_LABELS: Record<Exchange, string> = {
+  binance:  'Binance',
+  kraken:   'Kraken',
+  okx:      'OKX',
+  coinbase: 'Coinbase',
+}
+
+const STATUS_DOT: Record<ConnectionStatus, string> = {
+  connected:    'bg-green-500',
+  reconnecting: 'bg-amber-500 animate-pulse',
+  disconnected: 'bg-red-500',
+}
+
+/** How often quote ages are re-checked when no new prices arrive. */
+const FRESHNESS_CHECK_MS = 1_000
+
 export default function DashboardClient() {
-  const { ticks, connected, error } = useWorkerStream(PAIRS)
+  const { ticks, connected, error, exchangeStatus } = useWorkerStream(PAIRS)
+  const now = useNow(FRESHNESS_CHECK_MS)
 
-  const opportunities = useMemo<ArbitrageOpportunity[]>(() => {
-    return PAIRS.flatMap((pair) => {
-      const pairTicks = ticks[pair]
-      if (!pairTicks) return []
+  // Only quotes that are fresh and from a connected exchange, per pair. Arbitrage
+  // and the highest-bid highlight are computed from these alone: a frozen quote
+  // next to a live one shows a spread that doesn't exist.
+  const freshByPair = useMemo(
+    () => Object.fromEntries(PAIRS.map((pair) => [pair, freshTicks(ticks[pair], now, exchangeStatus)])),
+    [ticks, now, exchangeStatus],
+  )
 
-      // Collect ticks from all connected exchanges for this pair
-      const exchangeTicks = ALL_EXCHANGES
-        .map((ex) => pairTicks[ex])
-        .filter((t): t is NonNullable<typeof t> => !!t)
-
-      if (exchangeTicks.length < 2) return []
-
-      // Find the best arbitrage across all C(n,2) exchange pairs
-      let best: ArbitrageOpportunity | null = null
-      for (let i = 0; i < exchangeTicks.length; i++) {
-        for (let j = i + 1; j < exchangeTicks.length; j++) {
-          const opp = calculateArbitrage(pair, exchangeTicks[i], exchangeTicks[j])
-          if (!best || opp.netSpreadPct > best.netSpreadPct) best = opp
-        }
-      }
-      return best ? [best] : []
-    })
-  }, [ticks])
+  const opportunities = useMemo<ArbitrageOpportunity[]>(
+    () =>
+      PAIRS.flatMap((pair) => {
+        const best = findBestForPair(pair, freshByPair[pair])
+        return best ? [best] : []
+      }),
+    [freshByPair],
+  )
 
   return (
     <div className="space-y-6">
       {/* Status bar */}
-      <div className="flex items-center gap-2 text-xs text-muted-foreground">
-        <span
-          className={`h-2 w-2 rounded-full ${connected ? 'bg-green-500' : 'bg-red-500'}`}
-        />
-        {connected ? 'Live feed active' : 'Connecting…'}
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+        <span className="flex items-center gap-2">
+          <span
+            className={`h-2 w-2 rounded-full ${connected ? 'bg-green-500' : 'bg-red-500'}`}
+          />
+          {connected ? 'Live feed active' : 'Connecting…'}
+        </span>
+        <span className="flex items-center gap-3" aria-label="Exchange connections">
+          {ALL_EXCHANGES.map((exchange) => {
+            const status = exchangeStatus[exchange]
+            return (
+              <span key={exchange} className="flex items-center gap-1" title={status ?? 'connecting'}>
+                <span className={cn('h-1.5 w-1.5 rounded-full', status ? STATUS_DOT[status] : 'bg-muted-foreground/40')} />
+                {EXCHANGE_LABELS[exchange]}
+              </span>
+            )
+          })}
+        </span>
         {error && (
-          <span className="ml-2 text-red-400">Error: {error}</span>
+          <span className="text-red-400">Error: {error}</span>
         )}
       </div>
 
       {/* Per-pair price tiles grid */}
       {PAIRS.map((pair) => {
         const pairTicks = ticks[pair]
+        const fresh = freshByPair[pair]
 
-        // Find the exchange with the highest bid for highlighting
-        const highestBidExchange = ALL_EXCHANGES.reduce<Exchange | null>((best, ex) => {
-          const tick = pairTicks?.[ex]
-          if (!tick) return best
-          const bestTick = best ? pairTicks?.[best] : null
-          return !bestTick || tick.bid > bestTick.bid ? ex : best
-        }, null)
+        // Highest bid among fresh quotes, for highlighting
+        const highestBid = fresh.reduce<PriceTick | null>(
+          (best, tick) => (!best || tick.bid > best.bid ? tick : best),
+          null,
+        )
 
         return (
           <section key={pair}>
             <h2 className="mb-2 text-sm font-semibold text-muted-foreground">{pair}</h2>
             <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-              {ALL_EXCHANGES.map((exchange) => (
-                <PriceTile
-                  key={exchange}
-                  tick={pairTicks?.[exchange] ?? null}
-                  exchange={exchange}
-                  pair={pair}
-                  isHigher={highestBidExchange === exchange}
-                />
-              ))}
+              {ALL_EXCHANGES.map((exchange) => {
+                const tick = pairTicks?.[exchange] ?? null
+                return (
+                  <PriceTile
+                    key={exchange}
+                    tick={tick}
+                    exchange={exchange}
+                    pair={pair}
+                    isHigher={highestBid?.exchange === exchange}
+                    stale={!!tick && !fresh.includes(tick)}
+                  />
+                )
+              })}
             </div>
           </section>
         )
@@ -85,4 +114,3 @@ export default function DashboardClient() {
     </div>
   )
 }
-

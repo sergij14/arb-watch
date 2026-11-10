@@ -7,6 +7,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { SpreadBadge } from './SpreadBadge'
+import { STALE_AFTER_MS } from '@/lib/arbitrage/freshness'
 import type { ArbitrageOpportunity } from '@/types/market'
 
 interface ArbitrageTableProps {
@@ -32,7 +33,8 @@ export function ArbitrageTable({ opportunities }: ArbitrageTableProps) {
       <div className="border-b border-border px-4 py-3">
         <h2 className="text-sm font-semibold">Arbitrage Opportunities</h2>
         <p className="text-xs text-muted-foreground">
-          Sorted by net spread after fees · $1,000 notional
+          Sorted by net spread after fees · $1,000 notional · quotes older than{' '}
+          {STALE_AFTER_MS / 1000} s excluded
         </p>
       </div>
 
